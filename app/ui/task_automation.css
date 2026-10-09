@@ -1,0 +1,23 @@
+/* Minimal overrides to distinguish Automation UI */
+
+.automation-card {
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.automation-card h3 {
+  margin-bottom: 10px;
+  font-size: 1.05rem;
+  color: var(--primary);
+}
+
+.code-like {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 0.82rem;
+  color: var(--on-surface-variant);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+

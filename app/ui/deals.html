@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Deals & Price Tracker Agent</title>
+  <meta name="description" content="Compare prices, track deals, and set alerts across top e-commerce stores." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="/ui/styles.css?v=6" />
+  <link rel="stylesheet" href="/ui/deals.css?v=1" />
+</head>
+
+<body>
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="logo">
+          <span class="material-symbols-outlined">neurology</span>
+          <span class="logo-text">AI Browser Agent</span>
+        </div>
+        <button class="new-chat-btn" id="new-deals-chat">
+          <span class="material-symbols-outlined">add_notes</span>
+          <span>New Chat</span>
+        </button>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="nav-item active">
+          <span class="material-symbols-outlined">local_offer</span>
+          <span>Deals Tracker</span>
+        </a>
+        <a class="nav-item" href="/ui/index.html?view=research" style="text-decoration:none;">
+          <span class="material-symbols-outlined">search</span>
+          <span>Research</span>
+        </a>
+        <a class="nav-item" href="/ui/task_automation.html" style="text-decoration:none;">
+          <span class="material-symbols-outlined">bolt</span>
+          <span>Task Automation</span>
+        </a>
+        <a class="nav-item" href="/ui/index.html?view=library" style="text-decoration:none;">
+          <span class="material-symbols-outlined">auto_stories</span>
+          <span>Library</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-item" href="/ui/index.html" style="text-decoration:none;">
+          <span class="material-symbols-outlined">arrow_back</span>
+          <span>Back</span>
+        </a>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <div class="chat-column" id="view-deals">
+        <header class="chat-header">
+          <button class="icon-btn sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+            <span class="material-symbols-outlined">menu</span>
+          </button>
+          <div class="header-info">
+            <h1>Deals & Price Tracker</h1>
+          </div>
+        </header>
+
+        <section id="deals-thread" class="chat-thread">
+          <article class="message assistant-message">
+            <p>Search for any product to compare prices, track history, and find the best deals across top stores.</p>
+          </article>
+        </section>
+
+        <form id="deals-form" class="composer">
+          <label class="sr-only" for="deals-query">Search for deals</label>
+          <div class="composer-inner">
+            <textarea id="deals-query"
+              placeholder="e.g., iPhone 15 128GB or paste a product URL..." rows="1"></textarea>
+            <button type="submit" title="Search Deals">
+              <span class="material-symbols-outlined">search</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="/ui/deals.js?v=1" defer></script>
+  <script>
+    document.getElementById('sidebar-toggle').addEventListener('click', () => {
+      document.getElementById('app-shell').classList.toggle('sidebar-collapsed');
+    });
+    const ta = document.getElementById('deals-query');
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('deals-form').requestSubmit();
+      }
+    });
+  </script>
+</body>
+
+</html>

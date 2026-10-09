@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>General AI Browser Agent</title>
+  <meta name="description"
+    content="Evidence-first browser AI research agent with live progress and transparent execution." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="/ui/styles.css?v=6" />
+</head>
+
+<body>
+  <div class="app-shell" id="app-shell">
+    <!-- ─── Sidebar ─────────────────────────────────────────────── -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="logo">
+          <span class="material-symbols-outlined">neurology</span>
+          <span class="logo-text">AI Browser Agent</span>
+        </div>
+        <button class="new-chat-btn" id="new-chat-btn">
+          <span class="material-symbols-outlined">add_notes</span>
+          <span>New Chat</span>
+        </button>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="nav-item active" id="nav-research" data-view="research">
+          <span class="material-symbols-outlined">search</span>
+          <span>Research</span>
+        </a>
+        <a class="nav-item" href="/ui/task_automation.html" style="text-decoration:none;">
+          <span class="material-symbols-outlined">bolt</span>
+          <span>Task Automation</span>
+        </a>
+        <a class="nav-item" href="/ui/deals.html" style="text-decoration:none;">
+          <span class="material-symbols-outlined">local_offer</span>
+          <span>Deals Tracker</span>
+        </a>
+        <a class="nav-item" id="nav-library" data-view="library">
+          <span class="material-symbols-outlined">auto_stories</span>
+          <span>Library</span>
+        </a>
+        <a class="nav-item" data-view="datasources">
+          <span class="material-symbols-outlined">database</span>
+          <span>Data Sources</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-item" data-view="settings">
+          <span class="material-symbols-outlined">settings</span>
+          <span>Settings</span>
+        </a>
+      </div>
+    </aside>
+
+    <!-- ─── Main Area ───────────────────────────────────────────── -->
+    <main class="main-area" id="main-area">
+      <!-- ─── Chat Column (Research View) ────────────────────── -->
+      <div class="chat-column" id="view-research">
+        <header class="chat-header">
+          <button class="icon-btn sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+            <span class="material-symbols-outlined">menu</span>
+          </button>
+          <div class="header-info">
+            <h1>Research Agent</h1>
+          </div>
+        </header>
+
+        <section id="chat-thread" class="chat-thread">
+          <article class="message assistant-message">
+            <p>Ask a research question to begin. I will plan, browse, verify, and answer with evidence.</p>
+          </article>
+        </section>
+
+        <form id="query-form" class="composer">
+          <label class="sr-only" for="query">Ask the agent to research a topic</label>
+          <div class="composer-inner">
+            <textarea id="query"
+              placeholder="Ask anything... e.g., Compare RAG and long-context prompting, recommend a YouTube explainer."
+              rows="1"></textarea>
+            <button type="submit" title="Run Research Task">
+              <span class="material-symbols-outlined">arrow_upward</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ─── Library View ──────────────────────────────────── -->
+      <div class="chat-column library-view" id="view-library" style="display:none;">
+        <header class="chat-header">
+          <button class="icon-btn sidebar-toggle" title="Toggle sidebar"
+            onclick="document.getElementById('app-shell').classList.toggle('sidebar-collapsed')">
+            <span class="material-symbols-outlined">menu</span>
+          </button>
+          <div class="header-info">
+            <h1>Library</h1>
+          </div>
+        </header>
+        <section id="library-list" class="library-list">
+          <div class="library-empty">
+            <span class="material-symbols-outlined" style="font-size:48px;color:var(--muted);">auto_stories</span>
+            <p>No past research sessions yet.</p>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="/ui/app.js?v=6" defer></script>
+  <script>
+    /* ── UI Chrome (sidebar toggle) ────────── */
+    document.getElementById('sidebar-toggle').addEventListener('click', () => {
+      document.getElementById('app-shell').classList.toggle('sidebar-collapsed');
+    });
+
+    /* Auto-resize textarea */
+    const ta = document.getElementById('query');
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    });
+
+    /* ── Enter key submits (Shift+Enter for newline) ── */
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('query-form').requestSubmit();
+      }
+    });
+  </script>
+</body>
+
+</html>

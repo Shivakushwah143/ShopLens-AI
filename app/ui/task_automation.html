@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Automation Agent</title>
+  <meta name="description" content="Action-oriented browser automation agent." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="/ui/styles.css?v=6" />
+  <link rel="stylesheet" href="/ui/task_automation.css?v=1" />
+</head>
+
+<body>
+  <div class="app-shell" id="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="logo">
+          <span class="material-symbols-outlined">neurology</span>
+          <span class="logo-text">AI Browser Agent</span>
+        </div>
+        <button class="new-chat-btn" id="new-automation-chat">
+          <span class="material-symbols-outlined">add_notes</span>
+          <span>New Chat</span>
+        </button>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="nav-item active">
+          <span class="material-symbols-outlined">bolt</span>
+          <span>Task Automation</span>
+        </a>
+        <a class="nav-item" href="/ui/index.html?view=research" style="text-decoration:none;">
+          <span class="material-symbols-outlined">search</span>
+          <span>Research</span>
+        </a>
+        <a class="nav-item" href="/ui/deals.html" style="text-decoration:none;">
+          <span class="material-symbols-outlined">local_offer</span>
+          <span>Deals Tracker</span>
+        </a>
+        <a class="nav-item" href="/ui/index.html?view=library" style="text-decoration:none;">
+          <span class="material-symbols-outlined">auto_stories</span>
+          <span>Library</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <a class="nav-item" href="/ui/index.html" style="text-decoration:none;">
+          <span class="material-symbols-outlined">arrow_back</span>
+          <span>Back</span>
+        </a>
+      </div>
+    </aside>
+
+    <main class="main-area">
+      <div class="chat-column" id="view-automation">
+        <header class="chat-header">
+          <button class="icon-btn sidebar-toggle" id="sidebar-toggle" title="Toggle sidebar">
+            <span class="material-symbols-outlined">menu</span>
+          </button>
+          <div class="header-info">
+            <h1>Task Automation Agent</h1>
+          </div>
+        </header>
+
+        <section id="automation-thread" class="chat-thread">
+          <article class="message assistant-message">
+            <p>Describe a task (shopping, flights, comparisons). I will generate an action plan and attempt to execute it safely.</p>
+          </article>
+        </section>
+
+        <form id="automation-form" class="composer">
+          <label class="sr-only" for="automation-query">Automation task</label>
+          <div class="composer-inner">
+            <textarea id="automation-query" placeholder="e.g., Find laptops under 80000 with 16GB RAM" rows="1"></textarea>
+            <button type="submit" title="Run Task Automation">
+              <span class="material-symbols-outlined">play_arrow</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <script src="/ui/task_automation.js?v=1" defer></script>
+  <script>
+    document.getElementById('sidebar-toggle').addEventListener('click', () => {
+      document.getElementById('app-shell').classList.toggle('sidebar-collapsed');
+    });
+    const ta = document.getElementById('automation-query');
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+    });
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('automation-form').requestSubmit();
+      }
+    });
+  </script>
+</body>
+
+</html>
+
