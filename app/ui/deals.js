@@ -65,6 +65,18 @@ function renderProductCard(r, highlight = false) {
   const ratingHtml = r.rating
     ? `<span><span class="rating-star">&#9733;</span> ${esc(r.rating)}</span>`
     : "";
+  const rankHtml = r.ranking_position
+    ? `<span>Rank #${esc(r.ranking_position)}</span>`
+    : "";
+  const reasonsHtml = Array.isArray(r.ranking_reasons) && r.ranking_reasons.length
+    ? `<div class="deal-card-reasons">${r.ranking_reasons.slice(0, 3).map(reason => `<span>${esc(reason)}</span>`).join("")}</div>`
+    : "";
+  const missingHtml = Array.isArray(r.missing_required) && r.missing_required.length
+    ? `<div class="deal-card-reasons"><span>Missing evidence: ${esc(r.missing_required.join(", "))}</span></div>`
+    : "";
+  const offersHtml = Array.isArray(r.alternative_offers) && r.alternative_offers.length
+    ? `<div class="deal-card-reasons">${r.alternative_offers.slice(0, 2).map(o => `<span>${esc(o.source)}: ${formatPrice(o.price)} observed listing price</span>`).join("")}</div>`
+    : "";
   const highlightClass = highlight ? " deal-card--main" : "";
   const imageHtml = r.image_url
     ? `<img class="deal-card-image" src="${esc(r.image_url)}" alt="${esc(r.name)}" loading="lazy" onerror="this.replaceWith(productImagePlaceholder())">`
@@ -80,8 +92,12 @@ function renderProductCard(r, highlight = false) {
         <div class="deal-card-meta">
           ${badge}
           ${ratingHtml}
+          ${rankHtml}
           <span>${esc(r.source)}</span>
         </div>
+        ${reasonsHtml}
+        ${missingHtml}
+        ${offersHtml}
         <div class="deal-card-actions">
           ${r.link ? `<a class="btn-view" href="${esc(r.link)}" target="_blank">
             <span class="material-symbols-outlined" style="font-size:16px;">open_in_new</span> View Product
@@ -191,9 +207,13 @@ function renderUrlFlow(payload, query) {
 function renderSearchFlow(payload, query) {
   const results = payload.results || [];
   if (!results.length) {
+    const sourceRows = (payload.source_statuses || []).map(s =>
+      `<div class="source-status"><strong>${esc(s.retailer)}</strong><span>${esc(s.status)}</span><small>${esc(s.message || JSON.stringify(s.diagnostics?.fashion_rejection_reasons || {}))}</small></div>`
+    ).join("");
     appendAssistantHtml(`<div class="deals-empty">
       <span class="material-symbols-outlined">shopping_bag</span>
-      <p>No products found. Try a different search.</p>
+      <p>${esc(payload.explanation || "No verified products matched the requested attributes.")}</p>
+      ${sourceRows ? `<div class="deals-source-statuses">${sourceRows}</div>` : ""}
     </div>`);
     return;
   }
@@ -201,39 +221,30 @@ function renderSearchFlow(payload, query) {
   const cardsHtml = results.map(r => renderProductCard(r)).join("");
   appendAssistantHtml(`<div class="deals-results">${cardsHtml}</div>`);
 
-  const groups = {};
-  results.forEach(r => {
-    if (r.price != null && r.comparison_key) {
-      const group = groups[r.comparison_key] || {};
-      const source = r.source || "Unknown";
-      if (!group[source] || r.price < group[source].price) {
-        group[source] = { price: r.price, link: r.link, name: r.name };
-      }
-      groups[r.comparison_key] = group;
-    }
-  });
+  const possible = payload.possible_matches || [];
+  if (possible.length) {
+    appendAssistantHtml(`<div class="deals-section-label">Possible matches - verification needed</div>
+      <div class="deals-results">${possible.map(r => renderProductCard(r)).join("")}</div>`);
+  }
 
-  const comparableGroups = Object.values(groups).filter(g => Object.keys(g).length > 1);
-  if (!comparableGroups.length) {
+  const comparison = payload.comparison || [];
+  if (!comparison.length) {
     appendAssistantHtml(`<div class="comparison-section">
       <h3>Price Comparison</h3>
-      <p>No identical products available for direct price comparison</p>
+      <p>${esc(payload.comparison_explanation || "No identical products available for direct price comparison")}</p>
     </div>`);
     return;
   }
 
-  const sources = comparableGroups.sort((a, b) => Object.keys(b).length - Object.keys(a).length)[0];
-  const sourceKeys = Object.keys(sources);
-  const lowestPrice = Math.min(...sourceKeys.map(s => sources[s].price));
-  const rows = sourceKeys.map(s => {
-    const isLowest = sources[s].price === lowestPrice;
+  const rows = comparison.map(c => {
+    const isLowest = !!c.is_best;
     return `<div class="comparison-row">
       <span class="comparison-source">
         <span class="material-symbols-outlined" style="font-size:16px;">storefront</span>
-        ${esc(s)}
+        ${esc(c.source)}
       </span>
       <span class="comparison-price ${isLowest ? "comparison-lowest" : ""}">
-        ${formatPrice(sources[s].price)} ${isLowest ? "Lowest" : ""}
+        ${formatPrice(c.price)} ${isLowest ? "Lowest" : ""}<small>${esc(c.price_basis || "observed listing price")}</small>
       </span>
     </div>`;
   }).join("");

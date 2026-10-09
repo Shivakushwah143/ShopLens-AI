@@ -35,6 +35,7 @@ class ScrapedProduct:
     link: str
     source: str
     image_url: str | None = None
+    attributes: dict[str, str] | None = None
 
 
 @dataclass
@@ -42,6 +43,18 @@ class SourceSearchResult:
     retailer: str
     status: str
     products: list[ScrapedProduct]
+    message: str | None = None
+    diagnostics: dict[str, Any] | None = None
+
+
+@dataclass
+class ProductDetailResult:
+    """Product-detail fetch outcome with the raw HTML retained for evidence."""
+
+    product: ScrapedProduct | None
+    status: str
+    html: str = ""
+    base_url: str = ""
     message: str | None = None
     diagnostics: dict[str, Any] | None = None
 
@@ -111,6 +124,31 @@ async def scrape_url(url: str, *, task_id: str = "") -> list[ScrapedProduct]:
         product = _extract_product_page_for_domain(soup, url, domain) or _extract_generic_product(soup, url, domain)
         return [product] if product else []
     return extract_product_data(result.html, base_url=url)
+
+
+async def scrape_product_detail(url: str, *, task_id: str = "") -> "ProductDetailResult":
+    """Fetch a product-detail page and return its HTML plus the parsed product.
+
+    Unlike :func:`scrape_url` this preserves the fetched document so callers
+    can run evidence-bearing structured attribute extraction on it. Failures
+    are reported explicitly instead of raising.
+    """
+
+    fetched = await _fetch_page_html(url, task_id=task_id)
+    base_url = fetched.final_url or url
+    diagnostics = {"retrieval_method": fetched.method, "http_status": fetched.http_status}
+    if fetched.status != "success" or not fetched.html:
+        return ProductDetailResult(None, fetched.status, "", base_url, fetched.message, diagnostics)
+    soup = BeautifulSoup(fetched.html, "html.parser")
+    domain = _domain(url)
+    product = _extract_product_page_for_domain(soup, url, domain) or _extract_generic_product(soup, url, domain)
+    status = "success" if product else "empty"
+    message = None if product else "No structured product data found on detail page"
+    if product is None:
+        product = _extract_product_page_for_domain(soup, base_url, _domain(base_url)) or _extract_generic_product(soup, base_url, _domain(base_url))
+        status = "success" if product else "empty"
+        message = None if product else message
+    return ProductDetailResult(product, status, fetched.html, base_url, message, diagnostics)
 
 
 async def _scrape_search_page(url: str, *, task_id: str = "") -> list[ScrapedProduct]:
@@ -248,7 +286,7 @@ def _extract_product_page(soup: BeautifulSoup, url: str, domain: str, title_sele
     price = _first_price(soup, price_selectors)
     if not title or not price:
         return None
-    return ScrapedProduct(title[:200], price, _parse_rating(soup.get_text(" ", strip=True)), url, domain, _extract_image_url(soup, url))
+    return ScrapedProduct(title[:200], price, _parse_rating(soup.get_text(" ", strip=True)), url, domain, _extract_image_url(soup, url), _extract_attributes(soup))
 
 
 def _extract_generic_product(soup: BeautifulSoup, url: str, domain: str) -> ScrapedProduct | None:
@@ -256,7 +294,7 @@ def _extract_generic_product(soup: BeautifulSoup, url: str, domain: str) -> Scra
     price = _parse_price(soup.get_text(" ", strip=True))
     if not title or not price:
         return None
-    return ScrapedProduct(re.sub(r"\s*[-|:]\s*(Amazon|Flipkart|Croma|Buy Online).*$", "", title, flags=re.I)[:200], price, _parse_rating(soup.get_text(" ", strip=True)), url, domain, _extract_image_url(soup, url))
+    return ScrapedProduct(re.sub(r"\s*[-|:]\s*(Amazon|Flipkart|Croma|Buy Online).*$", "", title, flags=re.I)[:200], price, _parse_rating(soup.get_text(" ", strip=True)), url, domain, _extract_image_url(soup, url), _extract_attributes(soup))
 
 
 _ACCESSORY_WORDS = ["cover", "case", "tempered", "protector", "charger", "cable", "adapter", "earbuds", "headphones", "skin", "sleeve", "stand", "holder", "mouse pad", "cleaning kit"]
@@ -264,6 +302,19 @@ _QUERY_NOISE = {"under", "below", "above", "rs", "inr", "best", "cheapest", "dea
 
 
 def is_primary_product(query: str, title: str) -> bool:
+    """Decide whether ``title`` is the primary product the query asked for.
+
+    When the query names a definite primary category (smartphone, laptop,
+    garment, ...) the reusable taxonomy gate decides, so accessories and
+    unrelated listings cannot pass on a shared keyword. Queries without a
+    definite category fall back to the legacy token-overlap heuristic.
+    """
+
+    from .category_taxonomy import ProductCategory, category_for_query, evaluate_category
+
+    requested = category_for_query(query)
+    if requested is not ProductCategory.UNKNOWN:
+        return evaluate_category(requested, title).matched
     title_low = title.lower()
     if any(word in title_low for word in _ACCESSORY_WORDS):
         return False
@@ -350,10 +401,35 @@ def _guess_name(node: Any, text: str) -> str:
         el = node.select_one(selector)
         if el:
             value = _clean_title(str(el.get("aria-label") or el.get("title") or el.get_text(" ", strip=True)))
-            if 5 < len(value) < 200:
+            if 5 < len(value) < 200 and not _is_variant_label(value):
                 return value
     m = re.search(r"(?:₹|â‚¹|Ã¢â€šÂ¹|rs\.?|inr)", text, flags=re.I)
     return _clean_title((text[: m.start()] if m else text[:100]).strip())
+
+
+def _is_variant_label(value: str) -> bool:
+    value = value.lower().strip()
+    return bool(re.fullmatch(r"(?:\+\d+\s*)?(?:other\s+colo(?:u)?r?s?|more\s+colo(?:u)?r?s?|colo(?:u)?r?s?|size|sizes|options?)", value))
+
+
+def _extract_attributes(soup: BeautifulSoup) -> dict[str, str]:
+    """Extract normalized attributes from structured data, then title hints.
+
+    JSON-LD Product data and specification tables take precedence over the
+    low-confidence fit/fabric text fallback kept for garment detail pages.
+    """
+
+    from .attribute_extraction import extract_attributes_from_soup
+
+    attrs, _evidence = extract_attributes_from_soup(soup, base_url="")
+    text = soup.get_text(" ", strip=True)
+    fabric = re.search(r"\b(?:material composition|fabric|material)\b\s*[:\-]?\s*((?:100\s*%|pure)?\s*[a-z][a-z\s-]{2,40})", text, flags=re.I)
+    fit = re.search(r"\b(slim fit|regular fit|oversi[sz]ed|tapered fit|straight fit)\b", text, flags=re.I)
+    if fabric and "fabric" not in attrs:
+        attrs["fabric"] = _clean_title(fabric.group(1)).strip().lower()
+    if fit and "fit" not in attrs:
+        attrs["fit"] = fit.group(1).strip().lower()
+    return attrs
 
 
 def _clean_title(value: str) -> str:
