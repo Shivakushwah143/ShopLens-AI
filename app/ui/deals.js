@@ -206,22 +206,25 @@ function renderUrlFlow(payload, query) {
 
 function renderSearchFlow(payload, query) {
   const results = payload.results || [];
+  const possible = payload.possible_matches || [];
   if (!results.length) {
     const sourceRows = (payload.source_statuses || []).map(s =>
-      `<div class="source-status"><strong>${esc(s.retailer)}</strong><span>${esc(s.status)}</span><small>${esc(s.message || JSON.stringify(s.diagnostics?.fashion_rejection_reasons || {}))}</small></div>`
+      `<div class="source-status"><strong>${esc(s.retailer)}</strong><span>${esc(s.status)}</span><small>${esc(s.message || JSON.stringify(s.diagnostics?.category_rejection_reasons || s.diagnostics?.fashion_rejection_reasons || {}))}</small></div>`
     ).join("");
+    const possibleHtml = possible.length
+      ? `<div class="deals-section-label">Possible matches - verification needed</div><div class="deals-results">${possible.map(r => renderProductCard(r)).join("")}</div>`
+      : "";
     appendAssistantHtml(`<div class="deals-empty">
       <span class="material-symbols-outlined">shopping_bag</span>
       <p>${esc(payload.explanation || "No verified products matched the requested attributes.")}</p>
       ${sourceRows ? `<div class="deals-source-statuses">${sourceRows}</div>` : ""}
-    </div>`);
+    </div>${possibleHtml}`);
     return;
   }
 
   const cardsHtml = results.map(r => renderProductCard(r)).join("");
   appendAssistantHtml(`<div class="deals-results">${cardsHtml}</div>`);
 
-  const possible = payload.possible_matches || [];
   if (possible.length) {
     appendAssistantHtml(`<div class="deals-section-label">Possible matches - verification needed</div>
       <div class="deals-results">${possible.map(r => renderProductCard(r)).join("")}</div>`);

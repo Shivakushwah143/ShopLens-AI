@@ -12,10 +12,10 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from .attribute_extraction import extract_attributes_from_html
-from .category_taxonomy import GARMENT_CATEGORIES, ProductCategory, category_for_query, category_query_term, evaluate_category
+from .category_taxonomy import CatalogRole, GARMENT_CATEGORIES, ProductCategory, category_for_query, category_query_term, evaluate_category
 from .evaluator import evaluate_deal
 from .models import DealAlert, DealPriceHistory, DealProduct
-from .product_schema import AttributeEvidence, MatchAssessment, MatchStatus, RequirementResult, SearchRequirement
+from .product_schema import AttributeEvidence, MatchAssessment, MatchStatus, RequirementResult, SearchRequirement, candidate_from_scraped
 from .scraper import RETAILER_DOMAINS, ScrapedProduct, build_related_query, filter_products, is_primary_product, is_valid_product_link, scrape_product_detail, scrape_url, search_products, search_retailer
 
 logger = logging.getLogger(__name__)
@@ -180,19 +180,21 @@ class DealsService:
         return {"products": products, "source_statuses": source_statuses, "preliminary_results": preliminary}
 
     def _verify_store(self) -> dict[str, dict[str, Any]]:
-        return self.__dict__.setdefault("_verify_store", {})
+        return self.__dict__.setdefault("_deals_verify_store", {})
 
     def _evidence_store(self) -> dict[str, list[AttributeEvidence]]:
-        return self.__dict__.setdefault("_evidence_store", {})
+        return self.__dict__.setdefault("_deals_evidence_store", {})
 
     def _assessment_for(self, product: ScrapedProduct) -> dict[str, Any] | None:
-        store = self.__dict__.get("_verify_store") or {}
+        store = self.__dict__.get("_deals_verify_store") or {}
         return store.get(_stable_product_id(product))
 
     def _store_assessment(self, product: ScrapedProduct, gate: Any, assessment: MatchAssessment) -> None:
         evidence = [item.to_dict() for item in self._evidence_store().get(_stable_product_id(product), [])]
+        candidate = candidate_from_scraped(product, category=gate.category, retailer_product_id=_stable_product_id(product), evidence=self._evidence_store().get(_stable_product_id(product), []), identity=_product_identity_key(product, None))
         self._verify_store()[_stable_product_id(product)] = {
             "product": product,
+            "candidate": candidate.to_dict(),
             "status": assessment.status.value,
             "missing": list(assessment.missing_required),
             "contradictions": list(assessment.contradictions),
@@ -205,7 +207,7 @@ class DealsService:
     def _verification_fields(self, product: ScrapedProduct) -> dict[str, Any]:
         entry = self._assessment_for(product)
         if not entry:
-            return {"match_status": MatchStatus.VERIFIED.value, "missing_required": [], "evidence": [], "product_category": None, "category_role": None}
+            return {"match_status": MatchStatus.POSSIBLE.value, "missing_required": ["verification"], "evidence": [], "product_category": None, "category_role": None}
         return {
             "match_status": entry["status"],
             "missing_required": entry["missing"],
@@ -318,9 +320,10 @@ class DealsService:
             for idx, product in enumerate(getattr(source, "products", None) or []):
                 if not product.link or not is_valid_product_link(product.link):
                     continue
-                if not evaluate_category(requested, product.name, product.attributes).matched:
+                gate = evaluate_category(requested, product.name, product.attributes)
+                if gate.role in (CatalogRole.ACCESSORY, CatalogRole.COMPONENT, CatalogRole.REPLACEMENT, CatalogRole.UNRELATED):
                     continue
-                if not self._missing_required_attributes(product, intent):
+                if gate.matched and not self._missing_required_attributes(product, intent):
                     continue
                 if per_retailer.get(source.retailer, 0) >= 4:
                     continue
@@ -401,7 +404,7 @@ class DealsService:
         return {"status": _overall_status(results, source_statuses), "mode": "search", "intent": _intent_dict(intent), "results": results, "possible_matches": possible_matches, "verification_summary": self._verification_summary(results, possible_matches), "comparison": comparison, "comparison_explanation": comparison_explanation, "source_statuses": source_statuses, "explanation": explanation}
 
     def _collect_possible_matches(self, intent: SearchIntent) -> list[dict[str, Any]]:
-        store = self.__dict__.get("_verify_store") or {}
+        store = self.__dict__.get("_deals_verify_store") or {}
         possible = [entry for entry in store.values() if entry.get("status") == MatchStatus.POSSIBLE.value]
         possible.sort(key=lambda entry: entry["product"].price)
         matches: list[dict[str, Any]] = []
@@ -421,7 +424,7 @@ class DealsService:
         return {"name": product.name, "price": product.price, "rating": product.rating, "link": product.link, "source": product.source, "image_url": product.image_url, "deal_status": "AVERAGE", "match_label": "possible_match", "retailer_product_id": _stable_product_id(product), "comparison_key": _comparison_key(product.name), "match_status": entry.get("status"), "missing_required": entry.get("missing", []), "evidence": entry.get("evidence", []), "product_category": entry.get("category")}
 
     def _verification_summary(self, results: list[dict[str, Any]], possible_matches: list[dict[str, Any]]) -> dict[str, Any]:
-        store = self.__dict__.get("_verify_store") or {}
+        store = self.__dict__.get("_deals_verify_store") or {}
         statuses = [entry.get("status") for entry in store.values()]
         return {"verified": len(results), "possible": len(possible_matches), "candidates_verified": statuses.count(MatchStatus.VERIFIED.value), "candidates_possible": statuses.count(MatchStatus.POSSIBLE.value), "candidates_rejected": sum(1 for status in statuses if status not in (MatchStatus.VERIFIED.value, MatchStatus.POSSIBLE.value))}
 
@@ -452,14 +455,18 @@ class DealsService:
                 continue
             gate = evaluate_category(requested, product.name, product.attributes)
             if not gate.matched:
-                diagnostics["rejected_by_category_or_spec"] += 1
                 if gate.reason == "category_unverified":
                     diagnostics["category_unverified"] += 1
+                    diagnostics["missing_attribute_evidence"] += 1
+                    diagnostics["possible_matches"] += 1
+                    assessment = MatchAssessment.from_results([RequirementResult.unknown(SearchRequirement.mandatory("category"), note="category_unverified")])
+                    self._store_assessment(product, gate, assessment)
                 else:
+                    diagnostics["rejected_by_category_or_spec"] += 1
                     diagnostics["rejected_by_category"] += 1
-                reason = gate.reason or "category_mismatch"
-                diagnostics["category_rejection_reasons"][reason] = diagnostics["category_rejection_reasons"].get(reason, 0) + 1
-                _add_rejection_sample(diagnostics, product, reason)
+                    reason = gate.reason or "category_mismatch"
+                    diagnostics["category_rejection_reasons"][reason] = diagnostics["category_rejection_reasons"].get(reason, 0) + 1
+                    _add_rejection_sample(diagnostics, product, reason)
                 continue
             if intent.max_budget is not None and product.price > intent.max_budget:
                 diagnostics["rejected_by_budget"] += 1
@@ -932,10 +939,14 @@ def _add_rejection_sample(diagnostics: dict[str, Any], product: ScrapedProduct, 
 
 
 def _budget_refinement_query(intent: SearchIntent) -> str:
-    if intent.category == "product" or intent.max_budget is None:
+    if intent.max_budget is None:
         return ""
     if intent.category == "fashion":
         parts = [intent.gender, intent.fit, intent.fabric, intent.color, intent.clothing_type, "under", str(int(intent.max_budget))]
+        return _clean_query_parts(parts)
+    if intent.category == "product":
+        category_part = category_query_term(intent.product_category) or intent.search_query
+        parts = [category_part, *intent.specifications, "under", str(int(intent.max_budget))]
         return _clean_query_parts(parts)
     parts = [*intent.specifications, intent.category, "under", str(int(intent.max_budget))]
     seen = []

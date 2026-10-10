@@ -127,6 +127,7 @@ class CategoryGate:
     category: ProductCategory
     role: CatalogRole
     reason: str | None = None
+    status: str = "CONFIRMED"
 
 
 def _coerce_category(value: ProductCategory | str | None) -> ProductCategory:
@@ -145,6 +146,17 @@ def _blob(title: str | None, attributes: dict[str, str] | None = None) -> str:
     if attributes:
         parts.extend(str(v) for v in attributes.values() if v)
     return " ".join(parts).lower()
+
+
+def _structured_category(attributes: dict[str, str] | None = None) -> ProductCategory:
+    if not attributes:
+        return ProductCategory.UNKNOWN
+    for key in ("product_category", "category", "product_type", "item_type", "type"):
+        value = attributes.get(key) or attributes.get(key.title())
+        category = category_from_text(value or "")
+        if category is not ProductCategory.UNKNOWN:
+            return category
+    return ProductCategory.UNKNOWN
 
 
 def _has(text: str, marker: str) -> bool:
@@ -185,7 +197,9 @@ def _has_headphone_signal(text: str) -> bool:
 
 
 def _has_camera_signal(text: str) -> bool:
-    return bool(re.search(r"\b(camera|dslr|mirrorless|gopro)\b", text))
+    if _has_phone_signal(text):
+        return False
+    return bool(re.search(r"\b(dslr|mirrorless|gopro|camera\s+(?:body|kit|lens|with|for)|digital\s+camera)\b", text))
 
 
 def _has_smartwatch_signal(text: str) -> bool:
@@ -219,9 +233,21 @@ def _has_phone_signal(text: str) -> bool:
 def classify_category(title: str | None, attributes: dict[str, str] | None = None) -> ProductCategory:
     """Infer the canonical category from title text and structured attributes."""
 
+    structured = _structured_category(attributes)
+    if structured is not ProductCategory.UNKNOWN:
+        return structured
     text = _blob(title, attributes)
     if not text.strip():
         return ProductCategory.UNKNOWN
+    role = classify_role(title, attributes)
+    if role in (CatalogRole.ACCESSORY, CatalogRole.COMPONENT, CatalogRole.REPLACEMENT):
+        return ProductCategory.ACCESSORY
+    if role is CatalogRole.UNRELATED:
+        return ProductCategory.UNKNOWN
+    if _has_phone_signal(text):
+        return ProductCategory.SMARTPHONE
+    if _has_laptop_signal(text):
+        return ProductCategory.LAPTOP
     if _has_tablet_signal(text):
         return ProductCategory.TABLET
     if _has_tv_signal(text):
@@ -232,10 +258,6 @@ def classify_category(title: str | None, attributes: dict[str, str] | None = Non
         return ProductCategory.HEADPHONES
     if _has_smartwatch_signal(text):
         return ProductCategory.SMARTWATCH
-    if _has_laptop_signal(text):
-        return ProductCategory.LAPTOP
-    if _has_phone_signal(text):
-        return ProductCategory.SMARTPHONE
     return category_from_text(text)
 
 
@@ -283,10 +305,10 @@ def evaluate_category(
         return CategoryGate(matched, category, role, None if matched else "category_mismatch:primary")
 
     if role in (CatalogRole.ACCESSORY, CatalogRole.COMPONENT, CatalogRole.REPLACEMENT, CatalogRole.UNRELATED):
-        return CategoryGate(False, category, role, f"category_mismatch:{role.value}")
+        return CategoryGate(False, category, role, f"category_mismatch:{role.value}", "CONTRADICTED")
 
     if category is req:
         return CategoryGate(True, category, role, None)
     if category is ProductCategory.UNKNOWN:
-        return CategoryGate(False, category, role, "category_unverified")
-    return CategoryGate(False, category, role, f"category_mismatch:{category.value}")
+        return CategoryGate(False, category, role, "category_unverified", "UNKNOWN")
+    return CategoryGate(False, category, role, f"category_mismatch:{category.value}", "CONTRADICTED")
